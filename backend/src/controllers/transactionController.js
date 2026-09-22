@@ -5,93 +5,113 @@ const validateTransaction =
     require('../validators/transactionValidator');
 
 
-const getAllTransactions = (req, res) => {
-    const transactions =
-        transactionService.getAllTransactions();
+const getAllTransactions = async (req, res, next) => {
+    try {
+        const transactions =
+            await transactionService.getAllTransactions();
 
-    res.status(200).json(transactions);
+        res.status(200).json(transactions);
+    } catch (error) {
+        next(error);
+    }
 };
 
 
-const getTransactionById = (req, res) => {
-    const id = Number(req.params.id);
+const getTransactionById = async (req, res, next) => {
+    try {
+        const id = Number(req.params.id);
 
-    const transaction =
-        transactionService.getTransactionById(id);
+        const transaction =
+            await transactionService.getTransactionById(id);
 
-    if (!transaction) {
-        return res.status(404).json({
-            error: 'Transaction not found'
-        });
+        if (!transaction) {
+            return res.status(404).json({
+                error: 'Transaction not found'
+            });
+        }
+
+        res.status(200).json(transaction);
+    } catch (error) {
+        next(error);
     }
-
-    res.status(200).json(transaction);
 };
 
 
-const createTransaction = (req, res) => {
-    const validation =
-        validateTransaction(req.body);
+const createTransaction = async (req, res, next) => {
+    try {
+        const validation =
+            validateTransaction(req.body);
 
-    if (!validation.valid) {
-        return res.status(400).json({
-            error: validation.message
-        });
+        if (!validation.valid) {
+            return res.status(400).json({
+                error: validation.message
+            });
+        }
+
+        const transaction =
+            await transactionService.createTransaction(
+                req.body
+            );
+
+        res.status(201).json(transaction);
+    } catch (error) {
+        next(error);
     }
-
-    const transaction =
-        transactionService.createTransaction(
-            req.body
-        );
-
-    res.status(201).json(transaction);
 };
 
 
-const updateTransaction = (req, res) => {
-    const validation =
-        validateTransaction(req.body);
+const updateTransaction = async (req, res, next) => {
+    try {
+        const validation =
+            validateTransaction(req.body);
 
-    if (!validation.valid) {
-        return res.status(400).json({
-            error: validation.message
-        });
+        if (!validation.valid) {
+            return res.status(400).json({
+                error: validation.message
+            });
+        }
+
+        const id = Number(req.params.id);
+
+        const transaction =
+            await transactionService.updateTransaction(
+                id,
+                req.body
+            );
+
+        if (!transaction) {
+            return res.status(404).json({
+                error: 'Transaction not found'
+            });
+        }
+
+        res.status(200).json(transaction);
+    } catch (error) {
+        next(error);
     }
-
-    const id = Number(req.params.id);
-
-    const transaction =
-        transactionService.updateTransaction(
-            id,
-            req.body
-        );
-
-    if (!transaction) {
-        return res.status(404).json({
-            error: 'Transaction not found'
-        });
-    }
-
-    res.status(200).json(transaction);
 };
 
 
-const deleteTransaction = (req, res) => {
-    const id = Number(req.params.id);
+const deleteTransaction = async (req, res, next) => {
+    try {
+        const id = Number(req.params.id);
 
-    const transaction =
-        transactionService.deleteTransaction(id);
+        const transaction =
+            await transactionService.deleteTransaction(id);
 
-    if (!transaction) {
-        return res.status(404).json({
-            error: 'Transaction not found'
+        if (!transaction) {
+            return res.status(404).json({
+                error: 'Transaction not found'
+            });
+        }
+
+        res.status(200).json({
+            message: 'Transaction deleted successfully',
+            transaction
         });
+    } catch (error) {
+        next(error);
     }
-
-    res.status(200).json({
-        message: 'Transaction deleted successfully',
-        transaction
-    });
 };
 
 

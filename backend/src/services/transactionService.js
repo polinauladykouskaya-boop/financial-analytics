@@ -1,84 +1,82 @@
-const Transaction = require('../models/transactionModel');
-const transactions = require('../data/transactions');
+const Transaction =
+    require('../models/transaction');
 
-const getAllTransactions = () => {
-    return transactions;
+
+const getAllTransactions = async () => {
+    return await Transaction.findAll({
+        order: [['id', 'ASC']]
+    });
 };
 
-const getTransactionById = (id) => {
-    return transactions.find(
-        transaction => transaction.id === id
-    );
+
+const getTransactionById = async (id) => {
+    return await Transaction.findByPk(id);
 };
 
-const createTransaction = ({
+
+const createTransaction = async ({
     type,
     amount,
     category,
     description,
+    paymentMethod,
     date
 }) => {
-    const newId =
-        transactions.length > 0
-            ? Math.max(
-                ...transactions.map(
-                    transaction => transaction.id
-                )
-            ) + 1
-            : 1;
-
-    const transaction = new Transaction(
-        newId,
+    return await Transaction.create({
         type,
         amount,
         category,
-        description || '',
+        description: description || '',
+        paymentMethod,
         date
-    );
-
-    transactions.push(transaction);
-
-    return transaction;
+    });
 };
 
-const updateTransaction = (
+
+const updateTransaction = async (
     id,
     {
         type,
         amount,
         category,
         description,
+        paymentMethod,
         date
     }
 ) => {
     const transaction =
-        getTransactionById(id);
+        await Transaction.findByPk(id);
 
     if (!transaction) {
         return null;
     }
 
-    transaction.type = type;
-    transaction.amount = amount;
-    transaction.category = category;
-    transaction.description = description || '';
-    transaction.date = date;
+    await transaction.update({
+        type,
+        amount,
+        category,
+        description: description || '',
+        paymentMethod,
+        date
+    });
 
     return transaction;
 };
 
-const deleteTransaction = (id) => {
-    const index =
-        transactions.findIndex(
-            transaction => transaction.id === id
-        );
 
-    if (index === -1) {
+const deleteTransaction = async (id) => {
+    const transaction =
+        await Transaction.findByPk(id);
+
+    if (!transaction) {
         return null;
     }
 
-    return transactions.splice(index, 1)[0];
+    await transaction.destroy();
+
+    return transaction;
 };
+
 
 module.exports = {
     getAllTransactions,

@@ -1,0 +1,307 @@
+
+#root {
+  min-height: 100vh;
+}
+
+.app {
+  width: min(1100px, 92%);
+  margin: 0 auto;
+  padding: 42px 0;
+  color: #202b3c;
+}
+
+.header {
+  margin-bottom: 30px;
+}
+
+.eyebrow {
+  color: #5276d9;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+
+h1 {
+  margin: 8px 0;
+  font-size: clamp(28px, 5vw, 42px);
+  letter-spacing: -1.5px;
+}
+
+.subtitle {
+  color: #738096;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.summary-card,
+.panel {
+  padding: 24px;
+  border: 1px solid #e5eaf2;
+  border-radius: 18px;
+  background: #ffffff;
+}
+
+.summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.summary-card span {
+  color: #7c8799;
+  font-size: 14px;
+}
+
+.summary-card strong {
+  font-size: clamp(20px, 3vw, 30px);
+  overflow-wrap: anywhere;
+}
+
+.balance-card {
+  background: #edf2ff;
+  border-color: #edf2ff;
+}
+
+.income {
+  color: #16865c;
+}
+
+.expense {
+  color: #d64b5b;
+}
+
+.panel {
+  margin-bottom: 24px;
+  box-shadow: 0 8px 28px rgb(35 52 80 / 4%);
+}
+
+h2 {
+  margin: 0 0 22px;
+  font-size: 20px;
+}
+
+.transaction-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #59667a;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+input,
+select {
+  width: 100%;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #dce3ed;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #202b3c;
+  font: inherit;
+}
+
+input:focus,
+select:focus {
+  outline: 2px solid #b9c9ff;
+  border-color: #6685e8;
+}
+
+button {
+  padding: 12px 18px;
+  border: 0;
+  border-radius: 10px;
+  background: #4169e1;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:hover {
+  filter: brightness(0.95);
+}
+
+button:focus-visible {
+  outline: 3px solid #9db3ff;
+  outline-offset: 2px;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cancel-button {
+  background: #e9edf5;
+  color: #344054;
+}
+
+.list-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.list-header h2 {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 160px;
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+}
+
+.transaction-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.transaction {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 0;
+  border-bottom: 1px solid #edf0f5;
+}
+
+.transaction:last-child {
+  border-bottom: 0;
+}
+
+.transaction-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 13px;
+  background: #f0f3fa;
+  font-size: 22px;
+}
+
+.transaction-info {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.transaction-info strong {
+  overflow-wrap: anywhere;
+}
+
+.transaction-info span {
+  color: #7c8799;
+  font-size: 14px;
+}
+
+.transaction-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.edit-button,
+.delete-button {
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.edit-button {
+  background: #edf2ff;
+  color: #3558b8;
+}
+
+.delete-button {
+  background: #fff0f1;
+  color: #c73e4e;
+}
+
+.empty {
+  padding: 24px 0;
+  color: #7c8799;
+  text-align: center;
+}
+
+.notice {
+  min-height: 24px;
+  color: #59667a;
+  font-size: 14px;
+  text-align: center;
+}
+
+footer {
+  padding: 8px 0 24px;
+  color: #8490a2;
+  font-size: 13px;
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .list-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .controls {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 700px) {
+  .summary {
+    grid-template-columns: 1fr;
+  }
+
+  .transaction-form {
+    grid-template-columns: 1fr;
+  }
+
+  .form-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .transaction {
+    flex-wrap: wrap;
+  }
+
+  .transaction-info {
+    flex-basis: calc(100% - 60px);
+  }
+
+  .transaction-actions {
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 420px) {
+  .transaction-actions {
+    width: 100%;
+  }
+
+  .transaction-actions button {
+    flex: 1;
+  }
+}

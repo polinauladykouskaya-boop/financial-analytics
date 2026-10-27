@@ -1,139 +1,150 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import './App.css'
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+} from 'recharts'
+import {
+  getTransactions,
+  createTransaction,
+  updateTransaction,
+  deleteTransaction,
+} from './api/transactions'
 
-const STORAGE_KEY = 'financial-transactions'
-const THEME_KEY = 'financial-theme'
+const EMPTY_FORM = {
+  type: 'EXPENSE',
+  amount: '',
+  category: 'Продукты',
+  description: '',
+  paymentMethod: 'CARD',
+  date: new Date().toISOString().slice(0, 10),
+}
 
-const initialTransactions = [
-  {
-    id: 1,
-    title: 'Зарплата',
-    amount: 75000,
-    type: 'income',
-    category: 'Работа',
-    date: '2026-10-01',
-  },
-  {
-    id: 2,
-    title: 'Продукты',
-    amount: 3200,
-    type: 'expense',
-    category: 'Еда',
-    date: '2026-10-03',
-  },
-  {
-    id: 3,
-    title: 'Транспорт',
-    amount: 850,
-    type: 'expense',
-    category: 'Транспорт',
-    date: '2026-10-05',
-  },
-  {
-    id: 4,
-    title: 'Развлечения',
-    amount: 600,
-    type: 'expense',
-    category: 'Развлечения',
-    date: '2026-10-10',
-  },
-  {
-    id: 5,
-    title: 'Фриланс',
-    amount: 5000,
-    type: 'income',
-    category: 'Работа',
-    date: '2026-10-12',
-  },
-]
-
-const categories = [
-  'Еда',
+const CATEGORIES = [
+  'Продукты',
   'Транспорт',
   'Жильё',
+  'Рестораны',
   'Развлечения',
   'Здоровье',
   'Покупки',
+  'Зарплата',
   'Работа',
   'Образование',
   'Другое',
 ]
 
-const categoryColors = {
-  Еда: '#f05280',
-  Транспорт: '#f7b844',
-  Жильё: '#37bd99',
-  Развлечения: '#8b75f5',
-  Здоровье: '#38bdf8',
-  Покупки: '#fb923c',
-  Работа: '#3978f6',
-  Образование: '#a78bfa',
-  Другое: '#94a3b8',
+const PAYMENT_METHODS = [
+  { value: 'CARD', label: 'Банковская карта' },
+  { value: 'CASH', label: 'Наличные' },
+  { value: 'BANK_TRANSFER', label: 'Банковский перевод' },
+  { value: 'OTHER', label: 'Другое' },
+]
+
+const CHART_COLORS = [
+  '#34d399',
+  '#60a5fa',
+  '#a78bfa',
+  '#fbbf24',
+  '#fb7185',
+  '#22d3ee',
+  '#f97316',
+  '#818cf8',
+  '#4ade80',
+  '#e879f9',
+]
+
+function normalizeTransaction(item) {
+  return {
+    id: item.id,
+    type: String(item.type).toUpperCase(),
+    amount: Number(item.amount),
+    category: item.category || 'Другое',
+    description: item.description || '',
+    paymentMethod: item.paymentMethod || '',
+    date: String(item.date).slice(0, 10),
+  }
 }
 
-function loadTransactions() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-
-    if (saved) {
-      const parsed = JSON.parse(saved)
-
-      if (Array.isArray(parsed)) {
-        return parsed
-      }
-    }
-  } catch (error) {
-    console.error('Не удалось загрузить операции:', error)
+function toApiTransaction(form) {
+  return {
+    type: form.type,
+    amount: Number(form.amount),
+    category: form.category,
+    description: form.description.trim() || null,
+    paymentMethod: form.paymentMethod || null,
+    date: form.date,
   }
-
-  return initialTransactions
 }
 
 function formatMoney(value) {
   return new Intl.NumberFormat('ru-RU', {
     style: 'currency',
     currency: 'RUB',
-    maximumFractionDigits: 0,
-  }).format(value)
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(value) || 0)
 }
 
 function formatDate(value) {
   if (!value) return ''
 
-  return new Date(`${value}T12:00:00`).toLocaleDateString('ru-RU', {
+  const date = new Date(`${value}T12:00:00`)
+
+  return date.toLocaleDateString('ru-RU', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
   })
 }
 
-function getInitialTheme() {
-  try {
-    return localStorage.getItem(THEME_KEY) || 'light'
-  } catch {
-    return 'light'
+function paymentMethodLabel(value) {
+  return PAYMENT_METHODS.find((item) => item.value === value)?.label || ''
+}
+
+function getErrorMessage(error) {
+  if (error.response?.data?.message) {
+    return error.response.data.message
   }
+
+  if (error.response?.status === 401) {
+    return 'Требуется авторизация. Проверьте вход в систему.'
+  }
+
+  if (error.response?.status === 400) {
+    return 'Проверьте правильность заполнения полей.'
+  }
+
+  if (error.code === 'ECONNABORTED') {
+    return 'Сервер слишком долго отвечает. Попробуйте ещё раз.'
+  }
+
+  if (!error.response) {
+    return 'Не удалось связаться с сервером. Проверьте, запущен ли backend.'
+  }
+
+  return 'Не удалось выполнить операцию. Попробуйте ещё раз.'
 }
 
 function Icon({ name, size = 20 }) {
-  const common = {
-    width: size,
-    height: size,
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 1.8,
-    strokeLinecap: 'round',
-    strokeLinejoin: 'round',
-    'aria-hidden': true,
-  }
-
   const paths = {
-    home: (
+    overview: (
       <>
-        <path d="m3 10 9-7 9 7" />
-        <path d="M5 9v11h14V9" />
-        <path d="M9 20v-7h6v7" />
+        <rect x="3" y="3" width="7" height="7" rx="1" />
+        <rect x="14" y="3" width="7" height="7" rx="1" />
+        <rect x="3" y="14" width="7" height="7" rx="1" />
+        <rect x="14" y="14" width="7" height="7" rx="1" />
+      </>
+    ),
+    transactions: (
+      <>
+        <path d="M4 7h15" />
+        <path d="m15 3 4 4-4 4" />
+        <path d="M20 17H5" />
+        <path d="m9 13-4 4 4 4" />
       </>
     ),
     wallet: (
@@ -141,50 +152,21 @@ function Icon({ name, size = 20 }) {
         <rect x="3" y="5" width="18" height="15" rx="3" />
         <path d="M3 9h18" />
         <path d="M16 14h2" />
-        <path d="M7 5V3h10v2" />
-      </>
-    ),
-    chart: (
-      <>
-        <path d="M3 3v18h18" />
-        <path d="m7 14 4-4 4 3 6-8" />
-        <path d="M17 5h4v4" />
-      </>
-    ),
-    folder: (
-      <>
-        <path d="M3 6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-      </>
-    ),
-    settings: (
-      <>
-        <circle cx="12" cy="12" r="3" />
-        <path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.6a8 8 0 0 1-1.8 1l-.3 1.8h-2.8l-.3-1.8a8 8 0 0 1-1.8-1l-1.7.6-1.4-2.4 1.4-1.1a7 7 0 0 1 0-2l-1.4-1.1 1.4-2.4 1.7.6a8 8 0 0 1 1.8-1l.3-1.8h2.8l.3 1.8a8 8 0 0 1 1.8 1l1.7-.6 1.4 2.4-1.4 1.1a7 7 0 0 1 0 2Z" />
-      </>
-    ),
-    search: (
-      <>
-        <circle cx="10.8" cy="10.8" r="6.8" />
-        <path d="m16 16 4.5 4.5" />
-      </>
-    ),
-    plus: (
-      <>
-        <path d="M12 5v14M5 12h14" />
-      </>
-    ),
-    down: (
-      <>
-        <path d="M12 4v15" />
-        <path d="m5 12 7 7 7-7" />
       </>
     ),
     up: (
       <>
-        <path d="M12 20V5" />
-        <path d="m5 12 7-7 7 7" />
+        <path d="M12 20V4" />
+        <path d="m5 11 7-7 7 7" />
       </>
     ),
+    down: (
+      <>
+        <path d="M12 4v16" />
+        <path d="m5 13 7 7 7-7" />
+      </>
+    ),
+    plus: <path d="M12 5v14M5 12h14" />,
     edit: (
       <>
         <path d="m15 5 4 4" />
@@ -199,301 +181,282 @@ function Icon({ name, size = 20 }) {
         <path d="M9 7V4h6v3" />
       </>
     ),
-    calendar: (
+    refresh: (
       <>
-        <rect x="3" y="5" width="18" height="16" rx="2" />
-        <path d="M16 3v4M8 3v4M3 10h18" />
+        <path d="M20 7v5h-5" />
+        <path d="M4 17v-5h5" />
+        <path d="M5.5 9A7 7 0 0 1 18 6l2 6" />
+        <path d="M18.5 15A7 7 0 0 1 6 18l-2-6" />
       </>
     ),
+    search: (
+      <>
+        <circle cx="10.8" cy="10.8" r="6.8" />
+        <path d="m16 16 4.5 4.5" />
+      </>
+    ),
+    close: <path d="m6 6 12 12M18 6 6 18" />,
     sun: (
       <>
         <circle cx="12" cy="12" r="4" />
         <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
       </>
     ),
-    moon: (
-      <>
-        <path d="M20.5 14A8.5 8.5 0 0 1 10 3.5 8.5 8.5 0 1 0 20.5 14Z" />
-      </>
-    ),
-    clock: (
-      <>
-        <circle cx="12" cy="12" r="9" />
-        <path d="M12 7v5l3 2" />
-      </>
-    ),
-    close: (
-      <>
-        <path d="m6 6 12 12M18 6 6 18" />
-      </>
-    ),
-    check: (
-      <>
-        <path d="m5 12 4 4L19 6" />
-      </>
-    ),
-    filter: (
-      <>
-        <path d="M4 7h16M7 12h10m-7 5h4" />
-      </>
-    ),
-    shield: (
-      <>
-        <path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z" />
-        <path d="m9 12 2 2 4-4" />
-      </>
-    ),
-    target: (
-      <>
-        <circle cx="12" cy="12" r="9" />
-        <circle cx="12" cy="12" r="5" />
-        <circle cx="12" cy="12" r="1" />
-      </>
-    ),
   }
 
-  return <svg {...common}>{paths[name] || paths.wallet}</svg>
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {paths[name] || paths.wallet}
+    </svg>
+  )
 }
 
 function App() {
-  const [transactions, setTransactions] = useState(loadTransactions)
-  const [theme, setTheme] = useState(getInitialTheme)
-  const [activePage, setActivePage] = useState('Главная')
-  const [search, setSearch] = useState('')
-  const [filterType, setFilterType] = useState('all')
-  const [sortBy, setSortBy] = useState('newest')
+  const [transactions, setTransactions] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [isRetrying, setIsRetrying] = useState(false)
   const [notice, setNotice] = useState('')
+  const [noticeType, setNoticeType] = useState('success')
   const [editingId, setEditingId] = useState(null)
-  const [form, setForm] = useState({
-    title: '',
-    amount: '',
-    type: 'expense',
-    category: 'Еда',
-    date: new Date().toISOString().slice(0, 10),
-  })
+  const [form, setForm] = useState({ ...EMPTY_FORM })
+  const [search, setSearch] = useState('')
+  const [filterType, setFilterType] = useState('ALL')
+  const [sortBy, setSortBy] = useState('NEWEST')
+  const [theme, setTheme] = useState(
+    () => localStorage.getItem('financial-theme') || 'light',
+  )
+
+  const loadTransactions = useCallback(async () => {
+    try {
+      setIsLoading(true)
+
+      const data = await getTransactions()
+
+      if (!Array.isArray(data)) {
+        throw new Error('Сервер вернул неожиданный формат данных')
+      }
+
+      setTransactions(data.map(normalizeTransaction))
+      setNotice('')
+    } catch (error) {
+      console.error('Ошибка загрузки операций:', error)
+      setNotice(getErrorMessage(error))
+      setNoticeType('error')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  const retryLoadTransactions = useCallback(async () => {
+    setIsRetrying(true)
+    try {
+      await loadTransactions()
+    } finally {
+      setIsRetrying(false)
+    }
+  }, [loadTransactions])
+
+  useEffect(() => {
+    loadTransactions()
+  }, [loadTransactions])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
-
-    try {
-      localStorage.setItem(THEME_KEY, theme)
-    } catch (error) {
-      console.error('Не удалось сохранить тему:', error)
-    }
+    localStorage.setItem('financial-theme', theme)
   }, [theme])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions))
-    } catch (error) {
-      console.error('Не удалось сохранить операции:', error)
-      setNotice('Не удалось сохранить данные в браузере.')
-    }
-  }, [transactions])
 
   const income = useMemo(
     () =>
       transactions
-        .filter((item) => item.type === 'income')
-        .reduce((sum, item) => sum + Number(item.amount), 0),
+        .filter((item) => item.type === 'INCOME')
+        .reduce((sum, item) => sum + item.amount, 0),
     [transactions],
   )
 
   const expenses = useMemo(
     () =>
       transactions
-        .filter((item) => item.type === 'expense')
-        .reduce((sum, item) => sum + Number(item.amount), 0),
+        .filter((item) => item.type === 'EXPENSE')
+        .reduce((sum, item) => sum + item.amount, 0),
     [transactions],
   )
 
   const balance = income - expenses
 
-  const filteredTransactions = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase()
-
-    const result = transactions.filter((item) => {
-      const matchesSearch =
-        item.title.toLowerCase().includes(normalizedSearch) ||
-        item.category.toLowerCase().includes(normalizedSearch)
-
-      const matchesType =
-        filterType === 'all' || item.type === filterType
-
-      return matchesSearch && matchesType
-    })
-
-    return result.sort((a, b) => {
-      switch (sortBy) {
-        case 'oldest':
-          return a.date.localeCompare(b.date)
-        case 'amountHigh':
-          return Number(b.amount) - Number(a.amount)
-        case 'amountLow':
-          return Number(a.amount) - Number(b.amount)
-        default:
-          return b.date.localeCompare(a.date)
-      }
-    })
-  }, [transactions, search, filterType, sortBy])
-
-  const expenseByCategory = useMemo(() => {
-    const totals = {}
-
-    transactions
-      .filter((item) => item.type === 'expense')
-      .forEach((item) => {
-        totals[item.category] =
-          (totals[item.category] || 0) + Number(item.amount)
-      })
+  // Распределение всех расходов по категориям
+  const categoryBreakdown = useMemo(() => {
+    const totals = transactions
+      .filter((item) => item.type === 'EXPENSE')
+      .reduce((result, item) => {
+        const category = item.category || 'Другое'
+        result[category] = (result[category] || 0) + item.amount
+        return result
+      }, {})
 
     return Object.entries(totals)
       .map(([category, amount]) => ({
         category,
         amount,
-        color: categoryColors[category] || categoryColors.Другое,
-        percent: expenses > 0 ? (amount / expenses) * 100 : 0,
+        percentage: expenses > 0 ? (amount / expenses) * 100 : 0,
       }))
       .sort((a, b) => b.amount - a.amount)
   }, [transactions, expenses])
 
-  const recentTransactions = [...transactions]
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, 4)
+  const filteredTransactions = useMemo(() => {
+    const query = search.trim().toLowerCase()
 
-  const chartGradient = useMemo(() => {
-    if (!expenseByCategory.length || expenses <= 0) {
-      return 'conic-gradient(var(--border) 0% 100%)'
-    }
+    return transactions
+      .filter((item) => {
+        const matchesSearch =
+          item.category.toLowerCase().includes(query) ||
+          item.description.toLowerCase().includes(query)
 
-    let current = 0
-    const parts = expenseByCategory.map((item) => {
-      const start = current
-      current += item.percent
-      return `${item.color} ${start}% ${current}%`
-    })
+        const matchesType =
+          filterType === 'ALL' || item.type === filterType
 
-    return `conic-gradient(${parts.join(', ')})`
-  }, [expenseByCategory, expenses])
+        return matchesSearch && matchesType
+      })
+      .sort((a, b) => {
+        if (sortBy === 'OLDEST') {
+          return a.date.localeCompare(b.date)
+        }
+
+        if (sortBy === 'AMOUNT_HIGH') {
+          return b.amount - a.amount
+        }
+
+        if (sortBy === 'AMOUNT_LOW') {
+          return a.amount - b.amount
+        }
+
+        return b.date.localeCompare(a.date)
+      })
+  }, [transactions, search, filterType, sortBy])
 
   function resetForm() {
-    setForm({
-      title: '',
-      amount: '',
-      type: 'expense',
-      category: 'Еда',
-      date: new Date().toISOString().slice(0, 10),
-    })
+    setForm({ ...EMPTY_FORM })
     setEditingId(null)
   }
 
-  function handleSubmit(event) {
+  function showError(error) {
+    console.error('Ошибка операции:', error)
+    setNotice(getErrorMessage(error))
+    setNoticeType('error')
+  }
+
+  async function handleSubmit(event) {
     event.preventDefault()
 
-    const title = form.title.trim()
     const amount = Number(form.amount)
 
-    if (!title || !form.amount || !Number.isFinite(amount) || amount <= 0) {
-      setNotice('Введите название операции и сумму больше нуля.')
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setNotice('Введите сумму больше нуля.')
+      setNoticeType('error')
       return
     }
 
-    if (!form.date) {
-      setNotice('Выберите дату операции.')
+    if (!form.category || !form.date) {
+      setNotice('Заполните категорию и дату операции.')
+      setNoticeType('error')
       return
     }
 
-    if (editingId !== null) {
-      setTransactions((current) =>
-        current.map((item) =>
-          item.id === editingId
-            ? {
-                ...item,
-                title,
-                amount,
-                type: form.type,
-                category: form.category,
-                date: form.date,
-              }
-            : item,
-        ),
-      )
-      setNotice('Операция успешно обновлена.')
-    } else {
-      const newTransaction = {
-        id: Date.now(),
-        title,
-        amount,
-        type: form.type,
-        category: form.category,
-        date: form.date,
+    const payload = toApiTransaction(form)
+    const currentEditingId = editingId
+    const previousTransactions = [...transactions]
+    const temporaryId = `temp-${Date.now()}`
+
+    const optimisticTransaction = normalizeTransaction({
+      ...payload,
+      id: currentEditingId ?? temporaryId,
+    })
+
+    try {
+      setIsSaving(true)
+      setNotice('')
+
+      if (currentEditingId !== null) {
+        setTransactions((current) =>
+          current.map((item) =>
+            item.id === currentEditingId ? optimisticTransaction : item,
+          ),
+        )
+
+        await updateTransaction(currentEditingId, payload)
+        setNotice('Операция успешно обновлена.')
+      } else {
+        setTransactions((current) => [optimisticTransaction, ...current])
+
+        await createTransaction(payload)
+        setNotice('Операция успешно добавлена.')
       }
 
-      setTransactions((current) => [newTransaction, ...current])
-      setNotice('Операция успешно добавлена.')
+      setNoticeType('success')
+      resetForm()
+      await loadTransactions()
+    } catch (error) {
+      setTransactions(previousTransactions)
+      showError(error)
+    } finally {
+      setIsSaving(false)
     }
-
-    resetForm()
   }
 
   function handleEdit(transaction) {
     setEditingId(transaction.id)
+
     setForm({
-      title: transaction.title,
-      amount: String(transaction.amount),
       type: transaction.type,
+      amount: String(transaction.amount),
       category: transaction.category,
+      description: transaction.description,
+      paymentMethod: transaction.paymentMethod || 'CARD',
       date: transaction.date,
     })
-    setActivePage('Главная')
-    setNotice('Измените данные и сохраните операцию.')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+
+    document
+      .getElementById('operation-form')
+      ?.scrollIntoView({ behavior: 'smooth' })
   }
 
-  function handleDelete(id) {
+  async function handleDelete(id) {
     const transaction = transactions.find((item) => item.id === id)
     if (!transaction) return
 
-    setTransactions((current) => current.filter((item) => item.id !== id))
+    const confirmed = window.confirm(
+      `Удалить операцию «${transaction.description || transaction.category}»?`,
+    )
+    if (!confirmed) return
 
-    if (editingId === id) {
-      resetForm()
-    }
+    const previousTransactions = [...transactions]
 
-    setNotice(`Операция «${transaction.title}» удалена.`)
-  }
+    try {
+      setTransactions((current) => current.filter((item) => item.id !== id))
+      setNotice('Удаление операции...')
+      setNoticeType('success')
 
-  function clearAllTransactions() {
-    if (!window.confirm('Удалить все операции? Это действие нельзя отменить.')) {
-      return
-    }
+      await deleteTransaction(id)
 
-    setTransactions([])
-    resetForm()
-    setNotice('История операций очищена.')
-  }
+      setNotice('Операция успешно удалена.')
+      setNoticeType('success')
 
-  const navigation = [
-    { label: 'Главная', icon: 'home' },
-    { label: 'Операции', icon: 'wallet' },
-    { label: 'Аналитика', icon: 'chart' },
-    { label: 'Категории', icon: 'folder' },
-    { label: 'Настройки', icon: 'settings' },
-  ]
+      if (editingId === id) resetForm()
 
-  function handleNavigation(label) {
-    setActivePage(label)
-
-    if (label === 'Главная') {
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-    } else if (label === 'Операции') {
-      document.getElementById('history')?.scrollIntoView({ behavior: 'smooth' })
-    } else if (label === 'Аналитика') {
-      document.getElementById('analytics')?.scrollIntoView({ behavior: 'smooth' })
-    } else if (label === 'Категории') {
-      document.getElementById('analytics')?.scrollIntoView({ behavior: 'smooth' })
-    } else if (label === 'Настройки') {
-      document.getElementById('settings')?.scrollIntoView({ behavior: 'smooth' })
+      await loadTransactions()
+    } catch (error) {
+      setTransactions(previousTransactions)
+      showError(error)
     }
   }
 
@@ -502,55 +465,49 @@ function App() {
       <aside className="sidebar">
         <button
           className="brand"
-          onClick={() => handleNavigation('Главная')}
-          aria-label="На главную"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
         >
           <span className="brand-icon">
-            <Icon name="chart" size={25} />
+            <Icon name="overview" size={25} />
           </span>
           <span className="brand-text">
-            Финансовая
+            FinSight
             <br />
-            аналитика
+            Финансовая аналитика
           </span>
         </button>
 
-        <div className="sidebar-caption">МЕНЮ</div>
+        <div className="sidebar-caption">РАБОЧАЯ ОБЛАСТЬ</div>
 
-        <nav className="navigation" aria-label="Основная навигация">
-          {navigation.map((item) => (
-            <button
-              key={item.label}
-              className={`nav-item ${
-                activePage === item.label ? 'active' : ''
-              }`}
-              onClick={() => handleNavigation(item.label)}
-            >
-              <Icon name={item.icon} size={19} />
-              <span>{item.label}</span>
-              {item.label === 'Операции' && (
-                <span className="nav-count">{transactions.length}</span>
-              )}
-            </button>
-          ))}
+        <nav className="navigation">
+          <button
+            className="nav-item active"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          >
+            <Icon name="overview" size={19} />
+            <span>Обзор</span>
+          </button>
+
+          <button
+            className="nav-item"
+            onClick={() =>
+              document
+                .getElementById('history')
+                ?.scrollIntoView({ behavior: 'smooth' })
+            }
+          >
+            <Icon name="transactions" size={19} />
+            <span>Транзакции</span>
+            <span className="nav-count">{transactions.length}</span>
+          </button>
         </nav>
 
         <div className="sidebar-bottom">
-          <div className="goal-card">
-            <div className="goal-icon">
-              <Icon name="target" size={25} />
-            </div>
-            <h3>Ваши цели</h3>
-            <p>Планируйте. Контролируйте. Достигайте.</p>
-            <div className="goal-progress">
-              <span />
-            </div>
-            <div className="goal-caption">Финансовый порядок начинается здесь.</div>
-          </div>
-
           <div className="sidebar-secure">
-            <Icon name="shield" size={17} />
-            <span>Ваши данные хранятся локально</span>
+            <span>Финансовый контроль</span>
+          </div>
+          <div className="sidebar-secure">
+            <span>Лабораторная работа №5</span>
           </div>
         </div>
       </aside>
@@ -561,14 +518,14 @@ function App() {
             <Icon name="search" size={19} />
             <input
               type="search"
-              placeholder="Поиск по названию или категории..."
+              placeholder="Поиск по категории или описанию..."
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               aria-label="Поиск операций"
             />
             {search && (
               <button
-                className="icon-button search-clear"
+                className="icon-button"
                 onClick={() => setSearch('')}
                 aria-label="Очистить поиск"
               >
@@ -578,34 +535,23 @@ function App() {
           </div>
 
           <div className="topbar-actions">
-            <span className="theme-symbol">
-              <Icon name="sun" size={18} />
-            </span>
             <button
-              className={`theme-switch ${theme === 'dark' ? 'is-dark' : ''}`}
+              className="icon-button"
               onClick={() =>
-                setTheme((current) => (current === 'light' ? 'dark' : 'light'))
+                setTheme((current) =>
+                  current === 'light' ? 'dark' : 'light',
+                )
               }
-              aria-label={
-                theme === 'light'
-                  ? 'Включить тёмную тему'
-                  : 'Включить светлую тему'
-              }
-              aria-pressed={theme === 'dark'}
+              aria-label="Переключить тему"
             >
-              <span />
+              <Icon name="sun" size={19} />
             </button>
-            <span className="theme-symbol">
-              <Icon name="moon" size={18} />
-            </span>
-
-            <div className="topbar-divider" />
 
             <div className="profile">
               <div className="profile-avatar">ФА</div>
               <div className="profile-info">
-                <span className="profile-name">Пользователь</span>
-                <span className="profile-role">Личный кабинет</span>
+                <span className="profile-name">FinSight</span>
+                <span className="profile-role">Финансовая аналитика</span>
               </div>
             </div>
           </div>
@@ -616,32 +562,53 @@ function App() {
             <div>
               <div className="eyebrow">
                 <span className="eyebrow-dot" />
-                ЛИЧНЫЙ ФИНАНСОВЫЙ ЦЕНТР
+                РАБОЧАЯ ОБЛАСТЬ / ОБЗОР
               </div>
-              <h1>Финансовая аналитика</h1>
+              <h1>Финансовый обзор</h1>
               <p className="page-subtitle">
                 Управляйте доходами и расходами в одном месте
               </p>
             </div>
 
-            <div className="date-badge">
-              <span className="date-badge-icon">
-                <Icon name="calendar" size={18} />
-              </span>
-              <span>
-                <strong>
-                  {new Date().toLocaleDateString('ru-RU', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                  })}
-                </strong>
-                <small>Ваш финансовый обзор</small>
-              </span>
-            </div>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={loadTransactions}
+              disabled={isLoading}
+            >
+              <Icon name="refresh" size={18} />
+              {isLoading ? 'Загрузка...' : 'Обновить'}
+            </button>
           </section>
 
-          <section className="summary-grid" aria-label="Сводка финансов">
+          {notice && (
+            <div
+              className={`notice ${noticeType === 'error' ? 'notice-error' : ''}`}
+              role="status"
+            >
+              <span>{notice}</span>
+              {noticeType === 'error' && (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={retryLoadTransactions}
+                  disabled={isRetrying}
+                >
+                  <Icon name="refresh" size={16} />
+                  {isRetrying ? 'Повтор...' : 'Повторить запрос'}
+                </button>
+              )}
+              <button
+                className="icon-button"
+                onClick={() => setNotice('')}
+                aria-label="Закрыть уведомление"
+              >
+                <Icon name="close" size={16} />
+              </button>
+            </div>
+          )}
+
+          <section className="summary-grid" aria-label="Финансовая сводка">
             <article className="summary-card balance-card">
               <div className="summary-top">
                 <div className="summary-icon blue-icon">
@@ -652,87 +619,54 @@ function App() {
               </div>
               <div className="summary-value">{formatMoney(balance)}</div>
               <div className="summary-bottom">
-                <span className="summary-note">
-                  <span className="mini-dot blue-dot" />
-                  Доходы минус расходы
-                </span>
-                <span className="mini-chart blue-chart">
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                </span>
+                <span className="summary-note">Доходы минус расходы</span>
               </div>
             </article>
 
             <article className="summary-card income-card">
               <div className="summary-top">
                 <div className="summary-icon green-icon">
-                  <Icon name="up" size={24} />
+                  <Icon name="up" size={23} />
                 </div>
                 <span className="summary-label">Доходы</span>
                 <span className="summary-symbol">↗</span>
               </div>
               <div className="summary-value">{formatMoney(income)}</div>
               <div className="summary-bottom">
-                <span className="summary-note">
-                  <span className="mini-dot green-dot" />
-                  Всего поступлений
-                </span>
-                <span className="mini-chart green-chart">
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                </span>
+                <span className="summary-note">Все поступления</span>
               </div>
             </article>
 
             <article className="summary-card expense-card">
               <div className="summary-top">
                 <div className="summary-icon red-icon">
-                  <Icon name="down" size={24} />
+                  <Icon name="down" size={23} />
                 </div>
                 <span className="summary-label">Расходы</span>
                 <span className="summary-symbol">↘</span>
               </div>
               <div className="summary-value">{formatMoney(expenses)}</div>
               <div className="summary-bottom">
-                <span className="summary-note">
-                  <span className="mini-dot red-dot" />
-                  Всего списаний
-                </span>
-                <span className="mini-chart red-chart">
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                </span>
+                <span className="summary-note">Все списания</span>
+              </div>
+            </article>
+
+            <article className="summary-card">
+              <div className="summary-top">
+                <div className="summary-icon purple-panel-icon">
+                  <Icon name="transactions" size={23} />
+                </div>
+                <span className="summary-label">Операции</span>
+                <span className="summary-symbol">▤</span>
+              </div>
+              <div className="summary-value">
+                {isLoading ? '…' : transactions.length}
+              </div>
+              <div className="summary-bottom">
+                <span className="summary-note">Всего записей в системе</span>
               </div>
             </article>
           </section>
-
-          {notice && (
-            <div className="notice" role="status">
-              <span className="notice-icon">
-                <Icon name="check" size={17} />
-              </span>
-              <span>{notice}</span>
-              <button
-                className="icon-button notice-close"
-                onClick={() => setNotice('')}
-                aria-label="Закрыть уведомление"
-              >
-                <Icon name="close" size={16} />
-              </button>
-            </div>
-          )}
 
           <div className="dashboard-grid">
             <div className="dashboard-main-column">
@@ -743,57 +677,28 @@ function App() {
                       <Icon name="plus" size={21} />
                     </div>
                     <div>
-                      <h2>{editingId ? 'Редактировать операцию' : 'Новая операция'}</h2>
-                      <p>Добавьте поступление или расход</p>
+                      <h2>
+                        {editingId !== null
+                          ? 'Редактировать операцию'
+                          : 'Новая операция'}
+                      </h2>
+                      <p>Заполните информацию о финансовой операции</p>
                     </div>
                   </div>
-
-                  {editingId && (
-                    <span className="editing-badge">Режим редактирования</span>
-                  )}
                 </div>
 
                 <form className="transaction-form" onSubmit={handleSubmit}>
                   <div className="form-grid">
-                    <label className="field">
-                      <span className="field-label">Название операции</span>
-                      <input
-                        type="text"
-                        placeholder="Например, покупка продуктов"
-                        value={form.title}
-                        onChange={(event) =>
-                          setForm({ ...form, title: event.target.value })
-                        }
-                        maxLength={100}
-                        required
-                      />
-                    </label>
-
-                    <label className="field">
-                      <span className="field-label">Сумма, ₽</span>
-                      <input
-                        type="number"
-                        placeholder="0"
-                        min="0.01"
-                        step="0.01"
-                        value={form.amount}
-                        onChange={(event) =>
-                          setForm({ ...form, amount: event.target.value })
-                        }
-                        required
-                      />
-                    </label>
-
                     <div className="field">
                       <span className="field-label">Тип операции</span>
                       <div className="type-selector">
                         <button
                           type="button"
                           className={`type-option expense-option ${
-                            form.type === 'expense' ? 'selected' : ''
+                            form.type === 'EXPENSE' ? 'selected' : ''
                           }`}
                           onClick={() =>
-                            setForm({ ...form, type: 'expense' })
+                            setForm({ ...form, type: 'EXPENSE' })
                           }
                         >
                           <Icon name="down" size={17} />
@@ -802,10 +707,10 @@ function App() {
                         <button
                           type="button"
                           className={`type-option income-option ${
-                            form.type === 'income' ? 'selected' : ''
+                            form.type === 'INCOME' ? 'selected' : ''
                           }`}
                           onClick={() =>
-                            setForm({ ...form, type: 'income' })
+                            setForm({ ...form, type: 'INCOME' })
                           }
                         >
                           <Icon name="up" size={17} />
@@ -815,14 +720,30 @@ function App() {
                     </div>
 
                     <label className="field">
+                      <span className="field-label">Сумма, ₽</span>
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        placeholder="0,00"
+                        value={form.amount}
+                        onChange={(event) =>
+                          setForm({ ...form, amount: event.target.value })
+                        }
+                        required
+                      />
+                    </label>
+
+                    <label className="field">
                       <span className="field-label">Категория</span>
                       <select
                         value={form.category}
                         onChange={(event) =>
                           setForm({ ...form, category: event.target.value })
                         }
+                        required
                       >
-                        {categories.map((category) => (
+                        {CATEGORIES.map((category) => (
                           <option key={category} value={category}>
                             {category}
                           </option>
@@ -831,7 +752,7 @@ function App() {
                     </label>
 
                     <label className="field">
-                      <span className="field-label">Дата операции</span>
+                      <span className="field-label">Дата</span>
                       <input
                         type="date"
                         value={form.date}
@@ -841,25 +762,69 @@ function App() {
                         required
                       />
                     </label>
+
+                    <label className="field">
+                      <span className="field-label">Способ оплаты</span>
+                      <select
+                        value={form.paymentMethod}
+                        onChange={(event) =>
+                          setForm({
+                            ...form,
+                            paymentMethod: event.target.value,
+                          })
+                        }
+                      >
+                        {PAYMENT_METHODS.map((method) => (
+                          <option key={method.value} value={method.value}>
+                            {method.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="field">
+                      <span className="field-label">Описание</span>
+                      <input
+                        type="text"
+                        placeholder="Например, покупка продуктов"
+                        value={form.description}
+                        maxLength={500}
+                        onChange={(event) =>
+                          setForm({
+                            ...form,
+                            description: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
                   </div>
 
                   <div className="form-actions">
-                    <button type="submit" className="primary-button">
-                      <Icon name={editingId ? 'check' : 'plus'} size={18} />
-                      {editingId ? 'Сохранить изменения' : 'Добавить операцию'}
+                    <button
+                      type="submit"
+                      className="primary-button"
+                      disabled={isSaving}
+                    >
+                      <Icon
+                        name={editingId !== null ? 'edit' : 'plus'}
+                        size={18}
+                      />
+                      {isSaving
+                        ? 'Сохранение...'
+                        : editingId !== null
+                          ? 'Сохранить изменения'
+                          : 'Добавить операцию'}
                     </button>
 
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() => {
-                        resetForm()
-                        setNotice('')
-                      }}
-                    >
-                      <Icon name="close" size={17} />
-                      Очистить
-                    </button>
+                    {editingId !== null && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={resetForm}
+                      >
+                        Отмена
+                      </button>
+                    )}
                   </div>
                 </form>
               </section>
@@ -868,21 +833,21 @@ function App() {
                 <div className="panel-heading history-heading">
                   <div className="panel-heading-left">
                     <div className="panel-icon blue-panel-icon">
-                      <Icon name="wallet" size={20} />
+                      <Icon name="transactions" size={20} />
                     </div>
                     <div>
-                      <h2>История операций</h2>
-                      <p>Все ваши финансовые движения</p>
+                      <h2>Последние операции</h2>
+                      <p>Данные загружаются с сервера</p>
                     </div>
                   </div>
 
                   <span className="history-total">
-                    {filteredTransactions.length} из {transactions.length}
+                    {filteredTransactions.length} записей
                   </span>
                 </div>
 
                 <div className="history-controls">
-                  <div className="history-search">
+                  <label className="history-search">
                     <Icon name="search" size={17} />
                     <input
                       type="search"
@@ -890,18 +855,17 @@ function App() {
                       value={search}
                       onChange={(event) => setSearch(event.target.value)}
                     />
-                  </div>
+                  </label>
 
                   <label className="select-control">
-                    <Icon name="filter" size={16} />
                     <select
                       value={filterType}
                       onChange={(event) => setFilterType(event.target.value)}
                       aria-label="Фильтр по типу"
                     >
-                      <option value="all">Все операции</option>
-                      <option value="income">Доходы</option>
-                      <option value="expense">Расходы</option>
+                      <option value="ALL">Все типы</option>
+                      <option value="INCOME">Доходы</option>
+                      <option value="EXPENSE">Расходы</option>
                     </select>
                   </label>
 
@@ -909,24 +873,29 @@ function App() {
                     <select
                       value={sortBy}
                       onChange={(event) => setSortBy(event.target.value)}
-                      aria-label="Сортировка операций"
+                      aria-label="Сортировка"
                     >
-                      <option value="newest">Сначала новые</option>
-                      <option value="oldest">Сначала старые</option>
-                      <option value="amountHigh">Сумма: по убыванию</option>
-                      <option value="amountLow">Сумма: по возрастанию</option>
+                      <option value="NEWEST">Сначала новые</option>
+                      <option value="OLDEST">Сначала старые</option>
+                      <option value="AMOUNT_HIGH">Сначала крупные</option>
+                      <option value="AMOUNT_LOW">Сначала небольшие</option>
                     </select>
                   </label>
                 </div>
 
                 <div className="transaction-list">
-                  {filteredTransactions.length === 0 ? (
+                  {isLoading ? (
+                    <div className="empty-state" role="status" aria-live="polite">
+                      <div className="loading-spinner" aria-hidden="true" />
+                      <p>Загрузка операций с сервера...</p>
+                    </div>
+                  ) : filteredTransactions.length === 0 ? (
                     <div className="empty-state">
                       <div className="empty-state-icon">
                         <Icon name="wallet" size={28} />
                       </div>
                       <h3>Операции не найдены</h3>
-                      <p>Попробуйте изменить параметры поиска или добавьте операцию.</p>
+                      <p>Добавьте операцию или измените параметры поиска.</p>
                     </div>
                   ) : (
                     filteredTransactions.map((transaction) => (
@@ -936,61 +905,65 @@ function App() {
                       >
                         <div
                           className={`transaction-type-icon ${
-                            transaction.type === 'income'
+                            transaction.type === 'INCOME'
                               ? 'transaction-income'
                               : 'transaction-expense'
                           }`}
                         >
                           <Icon
-                            name={transaction.type === 'income' ? 'up' : 'down'}
+                            name={
+                              transaction.type === 'INCOME' ? 'up' : 'down'
+                            }
                             size={19}
                           />
                         </div>
 
                         <div className="transaction-info">
                           <span className="transaction-title">
-                            {transaction.title}
+                            {transaction.category}
                           </span>
                           <span className="transaction-meta">
-                            <span
-                              className="category-dot"
-                              style={{
-                                background:
-                                  categoryColors[transaction.category] ||
-                                  categoryColors.Другое,
-                              }}
-                            />
-                            {transaction.category}
+                            {transaction.description || 'Без описания'}
                             <span className="meta-separator">·</span>
                             {formatDate(transaction.date)}
+                            {transaction.paymentMethod && (
+                              <>
+                                <span className="meta-separator">·</span>
+                                {paymentMethodLabel(
+                                  transaction.paymentMethod,
+                                )}
+                              </>
+                            )}
                           </span>
                         </div>
 
                         <div
                           className={`transaction-amount ${
-                            transaction.type === 'income'
+                            transaction.type === 'INCOME'
                               ? 'amount-income'
                               : 'amount-expense'
                           }`}
                         >
-                          {transaction.type === 'income' ? '+' : '−'}
-                          {formatMoney(Number(transaction.amount))}
+                          {transaction.type === 'INCOME' ? '+' : '−'}
+                          {formatMoney(transaction.amount)}
                         </div>
 
                         <div className="transaction-actions">
                           <button
+                            type="button"
                             className="row-action edit-action"
                             onClick={() => handleEdit(transaction)}
-                            aria-label={`Редактировать ${transaction.title}`}
                             title="Редактировать"
+                            aria-label="Редактировать операцию"
                           >
                             <Icon name="edit" size={17} />
                           </button>
                           <button
+                            type="button"
                             className="row-action delete-action"
                             onClick={() => handleDelete(transaction.id)}
-                            aria-label={`Удалить ${transaction.title}`}
                             title="Удалить"
+                            aria-label="Удалить операцию"
                           >
                             <Icon name="trash" size={17} />
                           </button>
@@ -1002,26 +975,19 @@ function App() {
 
                 <div className="history-footer">
                   <span>
-                    Показано операций: <strong>{filteredTransactions.length}</strong>
+                    Показано операций:{' '}
+                    <strong>{filteredTransactions.length}</strong>
                   </span>
-                  {transactions.length > 0 && (
-                    <button
-                      className="text-button"
-                      onClick={clearAllTransactions}
-                    >
-                      Очистить историю
-                    </button>
-                  )}
                 </div>
               </section>
             </div>
 
             <div className="dashboard-side-column">
-              <section className="panel analytics-panel" id="analytics">
+              <section className="panel analytics-panel">
                 <div className="panel-heading">
                   <div className="panel-heading-left">
                     <div className="panel-icon green-panel-icon">
-                      <Icon name="chart" size={20} />
+                      <Icon name="overview" size={20} />
                     </div>
                     <div>
                       <h2>Структура расходов</h2>
@@ -1030,50 +996,113 @@ function App() {
                   </div>
                 </div>
 
-                <div className="chart-area">
-                  <div
-                    className="donut-chart"
-                    style={{ background: chartGradient }}
-                    role="img"
-                    aria-label="Круговая диаграмма расходов по категориям"
-                  >
-                    <div className="donut-hole">
-                      <strong>{formatMoney(expenses)}</strong>
-                      <span>Всего расходов</span>
+                {expenses === 0 ? (
+                  <div className="empty-state">
+                    <p>Пока нет расходов.</p>
+                    <span>Добавьте расход, чтобы увидеть диаграмму.</span>
+                  </div>
+                ) : (
+                  <div className="expense-analytics">
+                    <div className="expense-chart">
+                      <ResponsiveContainer width="100%" height={220}>
+                        <PieChart>
+                          <Pie
+                            data={categoryBreakdown}
+                            dataKey="amount"
+                            nameKey="category"
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={57}
+                            outerRadius={88}
+                            paddingAngle={3}
+                            stroke="none"
+                          >
+                            {categoryBreakdown.map((item, index) => (
+                              <Cell
+                                key={item.category}
+                                fill={
+                                  CHART_COLORS[index % CHART_COLORS.length]
+                                }
+                              />
+                            ))}
+                          </Pie>
+
+                          <Tooltip
+                            formatter={(value, name) => [
+                              formatMoney(value),
+                              name,
+                            ]}
+                            contentStyle={{
+                              backgroundColor:
+                                'var(--panel-bg, #172438)',
+                              border:
+                                '1px solid var(--border-color, #29384d)',
+                              borderRadius: '12px',
+                              fontSize: '13px',
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+
+                      <div className="expense-chart-center">
+                        <span>Всего расходов</span>
+                        <strong>{formatMoney(expenses)}</strong>
+                      </div>
+                    </div>
+
+                    <div className="category-breakdown">
+                      {categoryBreakdown.map((item, index) => (
+                        <div className="legend-item" key={item.category}>
+                          <div className="expense-category-info">
+                            <span
+                              className="expense-category-dot"
+                              style={{
+                                backgroundColor:
+                                  CHART_COLORS[
+                                    index % CHART_COLORS.length
+                                  ],
+                              }}
+                            />
+                            <span className="legend-name">
+                              {item.category}
+                            </span>
+                          </div>
+
+                          <div className="expense-category-values">
+                            <strong>{formatMoney(item.amount)}</strong>
+                            <span className="legend-percent">
+                              {item.percentage.toLocaleString('ru-RU', {
+                                maximumFractionDigits: 1,
+                              })}
+                              %
+                            </span>
+                          </div>
+
+                          <div className="expense-progress-track">
+                            <div
+                              className="expense-progress-fill"
+                              style={{
+                                width: `${item.percentage}%`,
+                                backgroundColor:
+                                  CHART_COLORS[
+                                    index % CHART_COLORS.length
+                                  ],
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-
-                  <div className="chart-legend">
-                    {expenseByCategory.length === 0 ? (
-                      <p className="legend-empty">Пока нет расходов</p>
-                    ) : (
-                      expenseByCategory.slice(0, 5).map((item) => (
-                        <div className="legend-item" key={item.category}>
-                          <span
-                            className="legend-dot"
-                            style={{ background: item.color }}
-                          />
-                          <span className="legend-name">{item.category}</span>
-                          <span className="legend-percent">
-                            {Math.round(item.percent)}%
-                          </span>
-                          <strong>{formatMoney(item.amount)}</strong>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
+                )}
 
                 <div className="insight-card">
-                  <div className="insight-icon">
-                    <Icon name="target" size={21} />
-                  </div>
                   <div>
                     <strong>Финансовая подсказка</strong>
                     <p>
-                      {expenseByCategory.length > 0
-                        ? `Больше всего расходов приходится на категорию «${expenseByCategory[0].category}».`
-                        : 'Добавляйте операции, чтобы увидеть структуру расходов.'}
+                      {expenses > 0
+                        ? `Ваши расходы составляют ${formatMoney(expenses)}.`
+                        : 'Добавляйте расходы, чтобы увидеть аналитику.'}
                     </p>
                   </div>
                 </div>
@@ -1083,111 +1112,44 @@ function App() {
                 <div className="panel-heading">
                   <div className="panel-heading-left">
                     <div className="panel-icon clock-panel-icon">
-                      <Icon name="clock" size={20} />
+                      <Icon name="refresh" size={20} />
                     </div>
                     <div>
-                      <h2>Последние операции</h2>
-                      <p>Недавние изменения в истории</p>
-                    </div>
-                  </div>
-                </div>
-
-                {recentTransactions.length === 0 ? (
-                  <div className="activity-empty">
-                    Здесь появятся ваши операции.
-                  </div>
-                ) : (
-                  <div className="activity-list">
-                    {recentTransactions.map((transaction) => (
-                      <div className="activity-item" key={transaction.id}>
-                        <span
-                          className={`activity-marker ${
-                            transaction.type === 'income'
-                              ? 'activity-marker-income'
-                              : 'activity-marker-expense'
-                          }`}
-                        />
-                        <div className="activity-content">
-                          <strong>{transaction.title}</strong>
-                          <span>{transaction.category}</span>
-                          <small>{formatDate(transaction.date)}</small>
-                        </div>
-                        <span
-                          className={`activity-amount ${
-                            transaction.type === 'income'
-                              ? 'amount-income'
-                              : 'amount-expense'
-                          }`}
-                        >
-                          {transaction.type === 'income' ? '+' : '−'}
-                          {formatMoney(Number(transaction.amount))}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </section>
-
-              <section className="panel settings-panel" id="settings">
-                <div className="panel-heading">
-                  <div className="panel-heading-left">
-                    <div className="panel-icon settings-panel-icon">
-                      <Icon name="settings" size={20} />
-                    </div>
-                    <div>
-                      <h2>Настройки интерфейса</h2>
-                      <p>Персонализируйте приложение</p>
+                      <h2>Состояние сервера</h2>
+                      <p>Синхронизация операций</p>
                     </div>
                   </div>
                 </div>
 
                 <div className="setting-row">
-                  <div className="setting-row-icon">
-                    <Icon name={theme === 'light' ? 'sun' : 'moon'} size={18} />
-                  </div>
                   <div className="setting-description">
-                    <strong>Тема оформления</strong>
-                    <span>{theme === 'light' ? 'Светлая тема' : 'Тёмная тема'}</span>
-                  </div>
-                  <button
-                    className={`theme-switch small-switch ${
-                      theme === 'dark' ? 'is-dark' : ''
-                    }`}
-                    onClick={() =>
-                      setTheme((current) =>
-                        current === 'light' ? 'dark' : 'light',
-                      )
-                    }
-                    aria-label="Переключить тему"
-                    aria-pressed={theme === 'dark'}
-                  >
-                    <span />
-                  </button>
-                </div>
-
-                <div className="setting-row">
-                  <div className="setting-row-icon">
-                    <Icon name="shield" size={18} />
-                  </div>
-                  <div className="setting-description">
-                    <strong>Хранение данных</strong>
-                    <span>Локально в браузере</span>
+                    <strong>Источник данных</strong>
+                    <span>Backend API / PostgreSQL</span>
                   </div>
                   <span className="status-badge">
                     <span />
-                    Активно
+                    {isLoading ? 'Загрузка' : 'Подключено'}
                   </span>
                 </div>
+
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={loadTransactions}
+                  disabled={isLoading}
+                >
+                  <Icon name="refresh" size={17} />
+                  Обновить данные
+                </button>
               </section>
             </div>
           </div>
 
           <footer className="page-footer">
             <div className="footer-security">
-              <Icon name="shield" size={15} />
-              <span>Данные сохраняются локально в браузере на этом устройстве.</span>
+              <span>FinSight · Финансовая аналитика</span>
             </div>
-            <span>Финансовая аналитика</span>
+            <span>Лабораторная работа №5</span>
           </footer>
         </div>
       </main>

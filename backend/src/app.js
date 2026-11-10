@@ -1,3 +1,5 @@
+const cors = require('cors');
+
 const express = require('express');
 
 const transactionRoutes =
@@ -13,6 +15,10 @@ const errorHandler =
 
 
 const app = express();
+
+app.use(cors({
+    origin: 'http://localhost:5173'
+}));
 
 app.use(express.json());
 

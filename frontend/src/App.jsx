@@ -83,7 +83,7 @@ function toApiTransaction(form) {
 function formatMoney(value) {
   return new Intl.NumberFormat('ru-RU', {
     style: 'currency',
-    currency: 'RUB',
+    currency: 'BYN',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number(value) || 0)
@@ -231,6 +231,7 @@ function App() {
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState({ ...EMPTY_FORM })
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [filterType, setFilterType] = useState('ALL')
   const [sortBy, setSortBy] = useState('NEWEST')
   const [theme, setTheme] = useState(
@@ -276,6 +277,20 @@ function App() {
     localStorage.setItem('financial-theme', theme)
   }, [theme])
 
+  // Применяем поиск через 400 мс после завершения ввода.
+  // При новом вводе предыдущий таймер очищается.
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedSearch(search)
+    }, 400)
+
+    return () => {
+      clearTimeout(timeoutId)
+    }
+  }, [search])
+
+  const isSearchPending = search !== debouncedSearch
+
   const income = useMemo(
     () =>
       transactions
@@ -314,7 +329,7 @@ function App() {
   }, [transactions, expenses])
 
   const filteredTransactions = useMemo(() => {
-    const query = search.trim().toLowerCase()
+    const query = debouncedSearch.trim().toLowerCase()
 
     return transactions
       .filter((item) => {
@@ -342,7 +357,7 @@ function App() {
 
         return b.date.localeCompare(a.date)
       })
-  }, [transactions, search, filterType, sortBy])
+  }, [transactions, debouncedSearch, filterType, sortBy])
 
   function resetForm() {
     setForm({ ...EMPTY_FORM })
@@ -615,7 +630,7 @@ function App() {
                   <Icon name="wallet" size={23} />
                 </div>
                 <span className="summary-label">Общий баланс</span>
-                <span className="summary-symbol">₽</span>
+                <span className="summary-symbol">BYN</span>
               </div>
               <div className="summary-value">{formatMoney(balance)}</div>
               <div className="summary-bottom">
@@ -720,7 +735,7 @@ function App() {
                     </div>
 
                     <label className="field">
-                      <span className="field-label">Сумма, ₽</span>
+                      <span className="field-label">Сумма, BYN</span>
                       <input
                         type="number"
                         min="0.01"
@@ -841,8 +856,10 @@ function App() {
                     </div>
                   </div>
 
-                  <span className="history-total">
-                    {filteredTransactions.length} записей
+                  <span className="history-total" aria-live="polite">
+                    {isSearchPending
+                      ? 'Поиск...'
+                      : `${filteredTransactions.length} записей`}
                   </span>
                 </div>
 

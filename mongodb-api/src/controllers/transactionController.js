@@ -116,7 +116,6 @@ const deleteTransaction = async (req, res, next) => {
     }
 };
 
-// Добавление вложенного тега
 const addTag = async (req, res, next) => {
     try {
         const transaction =
@@ -141,7 +140,7 @@ const addTag = async (req, res, next) => {
     }
 };
 
-// Изменение вложенного тега
+
 const updateTag = async (req, res, next) => {
     try {
         const { id, tagId } = req.params;
@@ -198,7 +197,6 @@ const updateTag = async (req, res, next) => {
     }
 };
 
-// Удаление вложенного тега
 const deleteTag = async (req, res, next) => {
     try {
         const { id, tagId } = req.params;
@@ -239,7 +237,6 @@ const deleteTag = async (req, res, next) => {
     }
 };
 
-// Добавление вложенной заметки
 const addNote = async (req, res, next) => {
     try {
         const transaction =

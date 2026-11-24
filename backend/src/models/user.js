@@ -1,3 +1,4 @@
+
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
@@ -22,6 +23,16 @@ const User = sequelize.define(
         passwordHash: {
             type: DataTypes.STRING(255),
             allowNull: false
+        },
+
+        resetPasswordToken: {
+            type: DataTypes.STRING(64),
+            allowNull: true
+        },
+
+        resetPasswordExpires: {
+            type: DataTypes.DATE,
+            allowNull: true
         }
     },
     {

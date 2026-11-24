@@ -1,0 +1,51 @@
+.realtime-panel {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 10px 14px;
+    border: 1px solid var(--border-color, #29384d);
+    border-radius: 12px;
+    background: var(--panel-bg, #172438);
+    color: var(--text-color, inherit);
+    font-size: 13px;
+}
+
+.realtime-status,
+.realtime-users {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.realtime-indicator {
+    width: 9px;
+    height: 9px;
+    flex-shrink: 0;
+    border-radius: 50%;
+}
+
+.realtime-connected {
+    background: #22c55e;
+    box-shadow: 0 0 8px rgb(34 197 94 / 45%);
+}
+
+.realtime-connecting {
+    background: #f59e0b;
+}
+
+.realtime-disconnected,
+.realtime-error {
+    background: #ef4444;
+}
+
+.realtime-users-icon {
+    color: #22c55e;
+    font-size: 11px;
+}
+
+.realtime-error-message {
+    flex-basis: 100%;
+    color: #ef4444;
+    line-height: 1.4;
+}

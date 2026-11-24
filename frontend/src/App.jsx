@@ -1,18 +1,24 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import './App.css'
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import './App.css';
+
 import {
   PieChart,
   Pie,
   Cell,
   ResponsiveContainer,
   Tooltip,
-} from 'recharts'
+} from 'recharts';
+
 import {
   getTransactions,
   createTransaction,
   updateTransaction,
   deleteTransaction,
-} from './api/transactions'
+} from './api/transactions';
+
+import { useRealtime } from './hooks/useRealtime';
+import RealtimeStatus from './components/RealtimeStatus';
 
 const EMPTY_FORM = {
   type: 'EXPENSE',
@@ -21,7 +27,7 @@ const EMPTY_FORM = {
   description: '',
   paymentMethod: 'CARD',
   date: new Date().toISOString().slice(0, 10),
-}
+};
 
 const CATEGORIES = [
   'Продукты',
@@ -35,14 +41,14 @@ const CATEGORIES = [
   'Работа',
   'Образование',
   'Другое',
-]
+];
 
 const PAYMENT_METHODS = [
   { value: 'CARD', label: 'Банковская карта' },
   { value: 'CASH', label: 'Наличные' },
   { value: 'BANK_TRANSFER', label: 'Банковский перевод' },
   { value: 'OTHER', label: 'Другое' },
-]
+];
 
 const CHART_COLORS = [
   '#34d399',
@@ -55,7 +61,7 @@ const CHART_COLORS = [
   '#818cf8',
   '#4ade80',
   '#e879f9',
-]
+];
 
 function normalizeTransaction(item) {
   return {
@@ -66,7 +72,7 @@ function normalizeTransaction(item) {
     description: item.description || '',
     paymentMethod: item.paymentMethod || '',
     date: String(item.date).slice(0, 10),
-  }
+  };
 }
 
 function toApiTransaction(form) {
@@ -77,7 +83,7 @@ function toApiTransaction(form) {
     description: form.description.trim() || null,
     paymentMethod: form.paymentMethod || null,
     date: form.date,
-  }
+  };
 }
 
 function formatMoney(value) {
@@ -86,47 +92,47 @@ function formatMoney(value) {
     currency: 'BYN',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(Number(value) || 0)
+  }).format(Number(value) || 0);
 }
 
 function formatDate(value) {
-  if (!value) return ''
+  if (!value) return '';
 
-  const date = new Date(`${value}T12:00:00`)
+  const date = new Date(`${value}T12:00:00`);
 
   return date.toLocaleDateString('ru-RU', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
-  })
+  });
 }
 
 function paymentMethodLabel(value) {
-  return PAYMENT_METHODS.find((item) => item.value === value)?.label || ''
+  return PAYMENT_METHODS.find((item) => item.value === value)?.label || '';
 }
 
 function getErrorMessage(error) {
   if (error.response?.data?.message) {
-    return error.response.data.message
+    return error.response.data.message;
   }
 
   if (error.response?.status === 401) {
-    return 'Требуется авторизация. Проверьте вход в систему.'
+    return 'Требуется авторизация. Проверьте вход в систему.';
   }
 
   if (error.response?.status === 400) {
-    return 'Проверьте правильность заполнения полей.'
+    return 'Проверьте правильность заполнения полей.';
   }
 
   if (error.code === 'ECONNABORTED') {
-    return 'Сервер слишком долго отвечает. Попробуйте ещё раз.'
+    return 'Сервер слишком долго отвечает. Попробуйте ещё раз.';
   }
 
   if (!error.response) {
-    return 'Не удалось связаться с сервером. Проверьте, запущен ли backend.'
+    return 'Не удалось связаться с сервером. Проверьте, запущен ли backend.';
   }
 
-  return 'Не удалось выполнить операцию. Попробуйте ещё раз.'
+  return 'Не удалось выполнить операцию. Попробуйте ещё раз.';
 }
 
 function Icon({ name, size = 20 }) {
@@ -202,7 +208,7 @@ function Icon({ name, size = 20 }) {
         <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
       </>
     ),
-  }
+  };
 
   return (
     <svg
@@ -218,106 +224,127 @@ function Icon({ name, size = 20 }) {
     >
       {paths[name] || paths.wallet}
     </svg>
-  )
+  );
 }
 
 function App() {
-  const [transactions, setTransactions] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [isSaving, setIsSaving] = useState(false)
-  const [isRetrying, setIsRetrying] = useState(false)
-  const [notice, setNotice] = useState('')
-  const [noticeType, setNoticeType] = useState('success')
-  const [editingId, setEditingId] = useState(null)
-  const [form, setForm] = useState({ ...EMPTY_FORM })
-  const [search, setSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [filterType, setFilterType] = useState('ALL')
-  const [sortBy, setSortBy] = useState('NEWEST')
+  const [transactions, setTransactions] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
+
+  const [notice, setNotice] = useState('');
+  const [noticeType, setNoticeType] = useState('success');
+
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState({ ...EMPTY_FORM });
+
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  const [filterType, setFilterType] = useState('ALL');
+  const [sortBy, setSortBy] = useState('NEWEST');
+
   const [theme, setTheme] = useState(
     () => localStorage.getItem('financial-theme') || 'light',
-  )
+  );
 
+  // Загрузка всех операций из PostgreSQL через REST API.
   const loadTransactions = useCallback(async () => {
     try {
-      setIsLoading(true)
+      setIsLoading(true);
 
-      const data = await getTransactions()
+      const data = await getTransactions();
 
       if (!Array.isArray(data)) {
-        throw new Error('Сервер вернул неожиданный формат данных')
+        throw new Error('Сервер вернул неожиданный формат данных');
       }
 
-      setTransactions(data.map(normalizeTransaction))
-      setNotice('')
+      setTransactions(data.map(normalizeTransaction));
+      setNotice('');
     } catch (error) {
-      console.error('Ошибка загрузки операций:', error)
-      setNotice(getErrorMessage(error))
-      setNoticeType('error')
+      console.error('Ошибка загрузки операций:', error);
+      setNotice(getErrorMessage(error));
+      setNoticeType('error');
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }, [])
+  }, []);
 
+  // Подключение к Socket.IO и получение событий от сервера.
+  const {
+    status: realtimeStatus,
+    onlineUsers,
+    notification: realtimeNotification,
+    socketError,
+    clearNotification,
+    requestRefresh,
+  } = useRealtime(loadTransactions);
+
+  // Повторная загрузка данных после ошибки.
   const retryLoadTransactions = useCallback(async () => {
-    setIsRetrying(true)
+    setIsRetrying(true);
+
     try {
-      await loadTransactions()
+      await loadTransactions();
     } finally {
-      setIsRetrying(false)
+      setIsRetrying(false);
     }
-  }, [loadTransactions])
+  }, [loadTransactions]);
 
+  // Первоначальная загрузка операций.
   useEffect(() => {
-    loadTransactions()
-  }, [loadTransactions])
+    loadTransactions();
+  }, [loadTransactions]);
 
+  // Сохранение выбранной темы.
   useEffect(() => {
-    document.documentElement.dataset.theme = theme
-    localStorage.setItem('financial-theme', theme)
-  }, [theme])
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('financial-theme', theme);
+  }, [theme]);
 
-  // Применяем поиск через 400 мс после завершения ввода.
-  // При новом вводе предыдущий таймер очищается.
+  // Задержка поиска для уменьшения количества пересчётов.
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      setDebouncedSearch(search)
-    }, 400)
+      setDebouncedSearch(search);
+    }, 400);
 
     return () => {
-      clearTimeout(timeoutId)
-    }
-  }, [search])
+      clearTimeout(timeoutId);
+    };
+  }, [search]);
 
-  const isSearchPending = search !== debouncedSearch
+  const isSearchPending = search !== debouncedSearch;
 
+  // Расчёт доходов.
   const income = useMemo(
     () =>
       transactions
         .filter((item) => item.type === 'INCOME')
         .reduce((sum, item) => sum + item.amount, 0),
     [transactions],
-  )
+  );
 
+  // Расчёт расходов.
   const expenses = useMemo(
     () =>
       transactions
         .filter((item) => item.type === 'EXPENSE')
         .reduce((sum, item) => sum + item.amount, 0),
     [transactions],
-  )
+  );
 
-  const balance = income - expenses
+  const balance = income - expenses;
 
-  // Распределение всех расходов по категориям
+  // Распределение расходов по категориям.
   const categoryBreakdown = useMemo(() => {
     const totals = transactions
       .filter((item) => item.type === 'EXPENSE')
       .reduce((result, item) => {
-        const category = item.category || 'Другое'
-        result[category] = (result[category] || 0) + item.amount
-        return result
-      }, {})
+        const category = item.category || 'Другое';
+        result[category] = (result[category] || 0) + item.amount;
+        return result;
+      }, {});
 
     return Object.entries(totals)
       .map(([category, amount]) => ({
@@ -325,111 +352,119 @@ function App() {
         amount,
         percentage: expenses > 0 ? (amount / expenses) * 100 : 0,
       }))
-      .sort((a, b) => b.amount - a.amount)
-  }, [transactions, expenses])
+      .sort((a, b) => b.amount - a.amount);
+  }, [transactions, expenses]);
 
+  // Поиск, фильтрация и сортировка операций.
   const filteredTransactions = useMemo(() => {
-    const query = debouncedSearch.trim().toLowerCase()
+    const query = debouncedSearch.trim().toLowerCase();
 
     return transactions
       .filter((item) => {
         const matchesSearch =
           item.category.toLowerCase().includes(query) ||
-          item.description.toLowerCase().includes(query)
+          item.description.toLowerCase().includes(query);
 
         const matchesType =
-          filterType === 'ALL' || item.type === filterType
+          filterType === 'ALL' || item.type === filterType;
 
-        return matchesSearch && matchesType
+        return matchesSearch && matchesType;
       })
       .sort((a, b) => {
         if (sortBy === 'OLDEST') {
-          return a.date.localeCompare(b.date)
+          return a.date.localeCompare(b.date);
         }
 
         if (sortBy === 'AMOUNT_HIGH') {
-          return b.amount - a.amount
+          return b.amount - a.amount;
         }
 
         if (sortBy === 'AMOUNT_LOW') {
-          return a.amount - b.amount
+          return a.amount - b.amount;
         }
 
-        return b.date.localeCompare(a.date)
-      })
-  }, [transactions, debouncedSearch, filterType, sortBy])
+        return b.date.localeCompare(a.date);
+      });
+  }, [transactions, debouncedSearch, filterType, sortBy]);
 
   function resetForm() {
-    setForm({ ...EMPTY_FORM })
-    setEditingId(null)
+    setForm({ ...EMPTY_FORM });
+    setEditingId(null);
   }
 
   function showError(error) {
-    console.error('Ошибка операции:', error)
-    setNotice(getErrorMessage(error))
-    setNoticeType('error')
+    console.error('Ошибка операции:', error);
+    setNotice(getErrorMessage(error));
+    setNoticeType('error');
   }
 
+  // Создание или редактирование операции.
   async function handleSubmit(event) {
-    event.preventDefault()
+    event.preventDefault();
 
-    const amount = Number(form.amount)
+    const amount = Number(form.amount);
 
     if (!Number.isFinite(amount) || amount <= 0) {
-      setNotice('Введите сумму больше нуля.')
-      setNoticeType('error')
-      return
+      setNotice('Введите сумму больше нуля.');
+      setNoticeType('error');
+      return;
     }
 
     if (!form.category || !form.date) {
-      setNotice('Заполните категорию и дату операции.')
-      setNoticeType('error')
-      return
+      setNotice('Заполните категорию и дату операции.');
+      setNoticeType('error');
+      return;
     }
 
-    const payload = toApiTransaction(form)
-    const currentEditingId = editingId
-    const previousTransactions = [...transactions]
-    const temporaryId = `temp-${Date.now()}`
+    const payload = toApiTransaction(form);
+    const currentEditingId = editingId;
+    const previousTransactions = [...transactions];
+    const temporaryId = `temp-${Date.now()}`;
 
     const optimisticTransaction = normalizeTransaction({
       ...payload,
       id: currentEditingId ?? temporaryId,
-    })
+    });
 
     try {
-      setIsSaving(true)
-      setNotice('')
+      setIsSaving(true);
+      setNotice('');
 
       if (currentEditingId !== null) {
         setTransactions((current) =>
           current.map((item) =>
             item.id === currentEditingId ? optimisticTransaction : item,
           ),
-        )
+        );
 
-        await updateTransaction(currentEditingId, payload)
-        setNotice('Операция успешно обновлена.')
+        await updateTransaction(currentEditingId, payload);
+        setNotice('Операция успешно обновлена.');
       } else {
-        setTransactions((current) => [optimisticTransaction, ...current])
+        setTransactions((current) => [
+          optimisticTransaction,
+          ...current,
+        ]);
 
-        await createTransaction(payload)
-        setNotice('Операция успешно добавлена.')
+        await createTransaction(payload);
+        setNotice('Операция успешно добавлена.');
       }
 
-      setNoticeType('success')
-      resetForm()
-      await loadTransactions()
+      setNoticeType('success');
+      resetForm();
+
+      // Получаем окончательные данные с сервера.
+      await loadTransactions();
     } catch (error) {
-      setTransactions(previousTransactions)
-      showError(error)
+      setTransactions(previousTransactions);
+      showError(error);
     } finally {
-      setIsSaving(false)
+      setIsSaving(false);
     }
   }
 
+  // Заполнение формы данными выбранной операции.
   function handleEdit(transaction) {
-    setEditingId(transaction.id)
+    setEditingId(transaction.id);
 
     setForm({
       type: transaction.type,
@@ -438,40 +473,48 @@ function App() {
       description: transaction.description,
       paymentMethod: transaction.paymentMethod || 'CARD',
       date: transaction.date,
-    })
+    });
 
     document
       .getElementById('operation-form')
-      ?.scrollIntoView({ behavior: 'smooth' })
+      ?.scrollIntoView({ behavior: 'smooth' });
   }
 
+  // Удаление операции.
   async function handleDelete(id) {
-    const transaction = transactions.find((item) => item.id === id)
-    if (!transaction) return
+    const transaction = transactions.find((item) => item.id === id);
+
+    if (!transaction) return;
 
     const confirmed = window.confirm(
       `Удалить операцию «${transaction.description || transaction.category}»?`,
-    )
-    if (!confirmed) return
+    );
 
-    const previousTransactions = [...transactions]
+    if (!confirmed) return;
+
+    const previousTransactions = [...transactions];
 
     try {
-      setTransactions((current) => current.filter((item) => item.id !== id))
-      setNotice('Удаление операции...')
-      setNoticeType('success')
+      setTransactions((current) =>
+        current.filter((item) => item.id !== id),
+      );
 
-      await deleteTransaction(id)
+      setNotice('Удаление операции...');
+      setNoticeType('success');
 
-      setNotice('Операция успешно удалена.')
-      setNoticeType('success')
+      await deleteTransaction(id);
 
-      if (editingId === id) resetForm()
+      setNotice('Операция успешно удалена.');
+      setNoticeType('success');
 
-      await loadTransactions()
+      if (editingId === id) {
+        resetForm();
+      }
+
+      await loadTransactions();
     } catch (error) {
-      setTransactions(previousTransactions)
-      showError(error)
+      setTransactions(previousTransactions);
+      showError(error);
     }
   }
 
@@ -479,12 +522,14 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <button
+          type="button"
           className="brand"
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
         >
           <span className="brand-icon">
             <Icon name="overview" size={25} />
           </span>
+
           <span className="brand-text">
             FinSight
             <br />
@@ -496,6 +541,7 @@ function App() {
 
         <nav className="navigation">
           <button
+            type="button"
             className="nav-item active"
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           >
@@ -504,6 +550,7 @@ function App() {
           </button>
 
           <button
+            type="button"
             className="nav-item"
             onClick={() =>
               document
@@ -521,8 +568,9 @@ function App() {
           <div className="sidebar-secure">
             <span>Финансовый контроль</span>
           </div>
+
           <div className="sidebar-secure">
-            <span>Лабораторная работа №5</span>
+            <span>Лабораторная работа №7</span>
           </div>
         </div>
       </aside>
@@ -531,6 +579,7 @@ function App() {
         <header className="topbar">
           <div className="topbar-search">
             <Icon name="search" size={19} />
+
             <input
               type="search"
               placeholder="Поиск по категории или описанию..."
@@ -538,8 +587,10 @@ function App() {
               onChange={(event) => setSearch(event.target.value)}
               aria-label="Поиск операций"
             />
+
             {search && (
               <button
+                type="button"
                 className="icon-button"
                 onClick={() => setSearch('')}
                 aria-label="Очистить поиск"
@@ -551,6 +602,7 @@ function App() {
 
           <div className="topbar-actions">
             <button
+              type="button"
               className="icon-button"
               onClick={() =>
                 setTheme((current) =>
@@ -564,9 +616,12 @@ function App() {
 
             <div className="profile">
               <div className="profile-avatar">ФА</div>
+
               <div className="profile-info">
                 <span className="profile-name">FinSight</span>
-                <span className="profile-role">Финансовая аналитика</span>
+                <span className="profile-role">
+                  Финансовая аналитика
+                </span>
               </div>
             </div>
           </div>
@@ -579,7 +634,9 @@ function App() {
                 <span className="eyebrow-dot" />
                 РАБОЧАЯ ОБЛАСТЬ / ОБЗОР
               </div>
+
               <h1>Финансовый обзор</h1>
+
               <p className="page-subtitle">
                 Управляйте доходами и расходами в одном месте
               </p>
@@ -596,12 +653,50 @@ function App() {
             </button>
           </section>
 
+          {/* Статус подключения Socket.IO. */}
+          <RealtimeStatus
+            status={realtimeStatus}
+            onlineUsers={onlineUsers}
+            socketError={socketError}
+            onRefresh={requestRefresh}
+          />
+
+          {/* Уведомления от сервера Socket.IO. */}
+          {realtimeNotification && (
+            <div
+              className={`notice ${
+                realtimeNotification.type === 'warning'
+                  ? 'notice-error'
+                  : ''
+              }`}
+              role="status"
+            >
+              <span>
+                {realtimeNotification.message ||
+                  'Новое системное уведомление'}
+              </span>
+
+              <button
+                type="button"
+                className="icon-button"
+                onClick={clearNotification}
+                aria-label="Закрыть уведомление"
+              >
+                <Icon name="close" size={16} />
+              </button>
+            </div>
+          )}
+
+          {/* Обычные уведомления приложения. */}
           {notice && (
             <div
-              className={`notice ${noticeType === 'error' ? 'notice-error' : ''}`}
+              className={`notice ${
+                noticeType === 'error' ? 'notice-error' : ''
+              }`}
               role="status"
             >
               <span>{notice}</span>
+
               {noticeType === 'error' && (
                 <button
                   type="button"
@@ -613,7 +708,9 @@ function App() {
                   {isRetrying ? 'Повтор...' : 'Повторить запрос'}
                 </button>
               )}
+
               <button
+                type="button"
                 className="icon-button"
                 onClick={() => setNotice('')}
                 aria-label="Закрыть уведомление"
@@ -623,18 +720,26 @@ function App() {
             </div>
           )}
 
+          {/* Финансовая сводка. */}
           <section className="summary-grid" aria-label="Финансовая сводка">
             <article className="summary-card balance-card">
               <div className="summary-top">
                 <div className="summary-icon blue-icon">
                   <Icon name="wallet" size={23} />
                 </div>
+
                 <span className="summary-label">Общий баланс</span>
                 <span className="summary-symbol">BYN</span>
               </div>
-              <div className="summary-value">{formatMoney(balance)}</div>
+
+              <div className="summary-value">
+                {formatMoney(balance)}
+              </div>
+
               <div className="summary-bottom">
-                <span className="summary-note">Доходы минус расходы</span>
+                <span className="summary-note">
+                  Доходы минус расходы
+                </span>
               </div>
             </article>
 
@@ -643,12 +748,19 @@ function App() {
                 <div className="summary-icon green-icon">
                   <Icon name="up" size={23} />
                 </div>
+
                 <span className="summary-label">Доходы</span>
                 <span className="summary-symbol">↗</span>
               </div>
-              <div className="summary-value">{formatMoney(income)}</div>
+
+              <div className="summary-value">
+                {formatMoney(income)}
+              </div>
+
               <div className="summary-bottom">
-                <span className="summary-note">Все поступления</span>
+                <span className="summary-note">
+                  Все поступления
+                </span>
               </div>
             </article>
 
@@ -657,12 +769,19 @@ function App() {
                 <div className="summary-icon red-icon">
                   <Icon name="down" size={23} />
                 </div>
+
                 <span className="summary-label">Расходы</span>
                 <span className="summary-symbol">↘</span>
               </div>
-              <div className="summary-value">{formatMoney(expenses)}</div>
+
+              <div className="summary-value">
+                {formatMoney(expenses)}
+              </div>
+
               <div className="summary-bottom">
-                <span className="summary-note">Все списания</span>
+                <span className="summary-note">
+                  Все списания
+                </span>
               </div>
             </article>
 
@@ -671,41 +790,60 @@ function App() {
                 <div className="summary-icon purple-panel-icon">
                   <Icon name="transactions" size={23} />
                 </div>
+
                 <span className="summary-label">Операции</span>
                 <span className="summary-symbol">▤</span>
               </div>
+
               <div className="summary-value">
                 {isLoading ? '…' : transactions.length}
               </div>
+
               <div className="summary-bottom">
-                <span className="summary-note">Всего записей в системе</span>
+                <span className="summary-note">
+                  Всего записей в системе
+                </span>
               </div>
             </article>
           </section>
 
           <div className="dashboard-grid">
             <div className="dashboard-main-column">
-              <section className="panel operation-panel" id="operation-form">
+              {/* Форма создания и редактирования операции. */}
+              <section
+                className="panel operation-panel"
+                id="operation-form"
+              >
                 <div className="panel-heading">
                   <div className="panel-heading-left">
                     <div className="panel-icon purple-panel-icon">
                       <Icon name="plus" size={21} />
                     </div>
+
                     <div>
                       <h2>
                         {editingId !== null
                           ? 'Редактировать операцию'
                           : 'Новая операция'}
                       </h2>
-                      <p>Заполните информацию о финансовой операции</p>
+
+                      <p>
+                        Заполните информацию о финансовой операции
+                      </p>
                     </div>
                   </div>
                 </div>
 
-                <form className="transaction-form" onSubmit={handleSubmit}>
+                <form
+                  className="transaction-form"
+                  onSubmit={handleSubmit}
+                >
                   <div className="form-grid">
                     <div className="field">
-                      <span className="field-label">Тип операции</span>
+                      <span className="field-label">
+                        Тип операции
+                      </span>
+
                       <div className="type-selector">
                         <button
                           type="button"
@@ -719,6 +857,7 @@ function App() {
                           <Icon name="down" size={17} />
                           Расход
                         </button>
+
                         <button
                           type="button"
                           className={`type-option income-option ${
@@ -735,7 +874,10 @@ function App() {
                     </div>
 
                     <label className="field">
-                      <span className="field-label">Сумма, BYN</span>
+                      <span className="field-label">
+                        Сумма, BYN
+                      </span>
+
                       <input
                         type="number"
                         min="0.01"
@@ -743,18 +885,27 @@ function App() {
                         placeholder="0,00"
                         value={form.amount}
                         onChange={(event) =>
-                          setForm({ ...form, amount: event.target.value })
+                          setForm({
+                            ...form,
+                            amount: event.target.value,
+                          })
                         }
                         required
                       />
                     </label>
 
                     <label className="field">
-                      <span className="field-label">Категория</span>
+                      <span className="field-label">
+                        Категория
+                      </span>
+
                       <select
                         value={form.category}
                         onChange={(event) =>
-                          setForm({ ...form, category: event.target.value })
+                          setForm({
+                            ...form,
+                            category: event.target.value,
+                          })
                         }
                         required
                       >
@@ -768,18 +919,25 @@ function App() {
 
                     <label className="field">
                       <span className="field-label">Дата</span>
+
                       <input
                         type="date"
                         value={form.date}
                         onChange={(event) =>
-                          setForm({ ...form, date: event.target.value })
+                          setForm({
+                            ...form,
+                            date: event.target.value,
+                          })
                         }
                         required
                       />
                     </label>
 
                     <label className="field">
-                      <span className="field-label">Способ оплаты</span>
+                      <span className="field-label">
+                        Способ оплаты
+                      </span>
+
                       <select
                         value={form.paymentMethod}
                         onChange={(event) =>
@@ -790,7 +948,10 @@ function App() {
                         }
                       >
                         {PAYMENT_METHODS.map((method) => (
-                          <option key={method.value} value={method.value}>
+                          <option
+                            key={method.value}
+                            value={method.value}
+                          >
                             {method.label}
                           </option>
                         ))}
@@ -798,7 +959,10 @@ function App() {
                     </label>
 
                     <label className="field">
-                      <span className="field-label">Описание</span>
+                      <span className="field-label">
+                        Описание
+                      </span>
+
                       <input
                         type="text"
                         placeholder="Например, покупка продуктов"
@@ -824,6 +988,7 @@ function App() {
                         name={editingId !== null ? 'edit' : 'plus'}
                         size={18}
                       />
+
                       {isSaving
                         ? 'Сохранение...'
                         : editingId !== null
@@ -844,19 +1009,27 @@ function App() {
                 </form>
               </section>
 
-              <section className="panel history-panel" id="history">
+              {/* История операций. */}
+              <section
+                className="panel history-panel"
+                id="history"
+              >
                 <div className="panel-heading history-heading">
                   <div className="panel-heading-left">
                     <div className="panel-icon blue-panel-icon">
                       <Icon name="transactions" size={20} />
                     </div>
+
                     <div>
                       <h2>Последние операции</h2>
                       <p>Данные загружаются с сервера</p>
                     </div>
                   </div>
 
-                  <span className="history-total" aria-live="polite">
+                  <span
+                    className="history-total"
+                    aria-live="polite"
+                  >
                     {isSearchPending
                       ? 'Поиск...'
                       : `${filteredTransactions.length} записей`}
@@ -866,18 +1039,23 @@ function App() {
                 <div className="history-controls">
                   <label className="history-search">
                     <Icon name="search" size={17} />
+
                     <input
                       type="search"
                       placeholder="Поиск..."
                       value={search}
-                      onChange={(event) => setSearch(event.target.value)}
+                      onChange={(event) =>
+                        setSearch(event.target.value)
+                      }
                     />
                   </label>
 
                   <label className="select-control">
                     <select
                       value={filterType}
-                      onChange={(event) => setFilterType(event.target.value)}
+                      onChange={(event) =>
+                        setFilterType(event.target.value)
+                      }
                       aria-label="Фильтр по типу"
                     >
                       <option value="ALL">Все типы</option>
@@ -889,21 +1067,34 @@ function App() {
                   <label className="select-control sort-control">
                     <select
                       value={sortBy}
-                      onChange={(event) => setSortBy(event.target.value)}
+                      onChange={(event) =>
+                        setSortBy(event.target.value)
+                      }
                       aria-label="Сортировка"
                     >
                       <option value="NEWEST">Сначала новые</option>
                       <option value="OLDEST">Сначала старые</option>
-                      <option value="AMOUNT_HIGH">Сначала крупные</option>
-                      <option value="AMOUNT_LOW">Сначала небольшие</option>
+                      <option value="AMOUNT_HIGH">
+                        Сначала крупные
+                      </option>
+                      <option value="AMOUNT_LOW">
+                        Сначала небольшие
+                      </option>
                     </select>
                   </label>
                 </div>
 
                 <div className="transaction-list">
                   {isLoading ? (
-                    <div className="empty-state" role="status" aria-live="polite">
-                      <div className="loading-spinner" aria-hidden="true" />
+                    <div
+                      className="empty-state"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <div
+                        className="loading-spinner"
+                        aria-hidden="true"
+                      />
                       <p>Загрузка операций с сервера...</p>
                     </div>
                   ) : filteredTransactions.length === 0 ? (
@@ -911,8 +1102,12 @@ function App() {
                       <div className="empty-state-icon">
                         <Icon name="wallet" size={28} />
                       </div>
+
                       <h3>Операции не найдены</h3>
-                      <p>Добавьте операцию или измените параметры поиска.</p>
+
+                      <p>
+                        Добавьте операцию или измените параметры поиска.
+                      </p>
                     </div>
                   ) : (
                     filteredTransactions.map((transaction) => (
@@ -929,7 +1124,9 @@ function App() {
                         >
                           <Icon
                             name={
-                              transaction.type === 'INCOME' ? 'up' : 'down'
+                              transaction.type === 'INCOME'
+                                ? 'up'
+                                : 'down'
                             }
                             size={19}
                           />
@@ -939,13 +1136,20 @@ function App() {
                           <span className="transaction-title">
                             {transaction.category}
                           </span>
+
                           <span className="transaction-meta">
                             {transaction.description || 'Без описания'}
+
                             <span className="meta-separator">·</span>
+
                             {formatDate(transaction.date)}
+
                             {transaction.paymentMethod && (
                               <>
-                                <span className="meta-separator">·</span>
+                                <span className="meta-separator">
+                                  ·
+                                </span>
+
                                 {paymentMethodLabel(
                                   transaction.paymentMethod,
                                 )}
@@ -969,16 +1173,21 @@ function App() {
                           <button
                             type="button"
                             className="row-action edit-action"
-                            onClick={() => handleEdit(transaction)}
+                            onClick={() =>
+                              handleEdit(transaction)
+                            }
                             title="Редактировать"
                             aria-label="Редактировать операцию"
                           >
                             <Icon name="edit" size={17} />
                           </button>
+
                           <button
                             type="button"
                             className="row-action delete-action"
-                            onClick={() => handleDelete(transaction.id)}
+                            onClick={() =>
+                              handleDelete(transaction.id)
+                            }
                             title="Удалить"
                             aria-label="Удалить операцию"
                           >
@@ -1000,12 +1209,14 @@ function App() {
             </div>
 
             <div className="dashboard-side-column">
+              {/* Аналитика расходов. */}
               <section className="panel analytics-panel">
                 <div className="panel-heading">
                   <div className="panel-heading-left">
                     <div className="panel-icon green-panel-icon">
                       <Icon name="overview" size={20} />
                     </div>
+
                     <div>
                       <h2>Структура расходов</h2>
                       <p>Распределение по категориям</p>
@@ -1016,12 +1227,17 @@ function App() {
                 {expenses === 0 ? (
                   <div className="empty-state">
                     <p>Пока нет расходов.</p>
-                    <span>Добавьте расход, чтобы увидеть диаграмму.</span>
+                    <span>
+                      Добавьте расход, чтобы увидеть диаграмму.
+                    </span>
                   </div>
                 ) : (
                   <div className="expense-analytics">
                     <div className="expense-chart">
-                      <ResponsiveContainer width="100%" height={220}>
+                      <ResponsiveContainer
+                        width="100%"
+                        height={220}
+                      >
                         <PieChart>
                           <Pie
                             data={categoryBreakdown}
@@ -1038,7 +1254,9 @@ function App() {
                               <Cell
                                 key={item.category}
                                 fill={
-                                  CHART_COLORS[index % CHART_COLORS.length]
+                                  CHART_COLORS[
+                                    index % CHART_COLORS.length
+                                  ]
                                 }
                               />
                             ))}
@@ -1069,7 +1287,10 @@ function App() {
 
                     <div className="category-breakdown">
                       {categoryBreakdown.map((item, index) => (
-                        <div className="legend-item" key={item.category}>
+                        <div
+                          className="legend-item"
+                          key={item.category}
+                        >
                           <div className="expense-category-info">
                             <span
                               className="expense-category-dot"
@@ -1080,13 +1301,17 @@ function App() {
                                   ],
                               }}
                             />
+
                             <span className="legend-name">
                               {item.category}
                             </span>
                           </div>
 
                           <div className="expense-category-values">
-                            <strong>{formatMoney(item.amount)}</strong>
+                            <strong>
+                              {formatMoney(item.amount)}
+                            </strong>
+
                             <span className="legend-percent">
                               {item.percentage.toLocaleString('ru-RU', {
                                 maximumFractionDigits: 1,
@@ -1116,6 +1341,7 @@ function App() {
                 <div className="insight-card">
                   <div>
                     <strong>Финансовая подсказка</strong>
+
                     <p>
                       {expenses > 0
                         ? `Ваши расходы составляют ${formatMoney(expenses)}.`
@@ -1125,12 +1351,14 @@ function App() {
                 </div>
               </section>
 
+              {/* Состояние сервера. */}
               <section className="panel activity-panel">
                 <div className="panel-heading">
                   <div className="panel-heading-left">
                     <div className="panel-icon clock-panel-icon">
                       <Icon name="refresh" size={20} />
                     </div>
+
                     <div>
                       <h2>Состояние сервера</h2>
                       <p>Синхронизация операций</p>
@@ -1143,9 +1371,26 @@ function App() {
                     <strong>Источник данных</strong>
                     <span>Backend API / PostgreSQL</span>
                   </div>
+
                   <span className="status-badge">
                     <span />
                     {isLoading ? 'Загрузка' : 'Подключено'}
+                  </span>
+                </div>
+
+                <div className="setting-row">
+                  <div className="setting-description">
+                    <strong>Socket.IO</strong>
+                    <span>Обмен событиями в реальном времени</span>
+                  </div>
+
+                  <span className="status-badge">
+                    <span />
+                    {realtimeStatus === 'connected'
+                      ? 'Подключено'
+                      : realtimeStatus === 'connecting'
+                        ? 'Подключение'
+                        : 'Нет связи'}
                   </span>
                 </div>
 
@@ -1166,12 +1411,13 @@ function App() {
             <div className="footer-security">
               <span>FinSight · Финансовая аналитика</span>
             </div>
-            <span>Лабораторная работа №5</span>
+
+            <span>Лабораторная работа №7</span>
           </footer>
         </div>
       </main>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;
